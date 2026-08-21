@@ -663,6 +663,28 @@ async function handleFiles(request, env, url) {
   return json({ error: "method_not_allowed" }, 405, { allow: "GET, PUT, DELETE" });
 }
 
+
+function extractResponsesAnswer(payload) {
+  if (!Array.isArray(payload?.output)) return undefined;
+  for (const item of payload.output) {
+    if (item?.type !== "message" || item?.role !== "assistant") continue;
+    for (const part of Array.isArray(item?.content) ? item.content : []) {
+      if (part?.type === "output_text" && typeof part?.text === "string") return part.text;
+    }
+  }
+  return undefined;
+}
+
+function setResponsesAnswer(payload, text) {
+  if (!Array.isArray(payload?.output)) return;
+  for (const item of payload.output) {
+    if (item?.type !== "message" || item?.role !== "assistant") continue;
+    for (const part of Array.isArray(item?.content) ? item.content : []) {
+      if (part?.type === "output_text" && typeof part?.text === "string") { part.text = text; return; }
+    }
+  }
+}
+
 async function handleChat(request, env, traceId) {
   if (request.method !== "POST") return json({ error: "method_not_allowed" }, 405, { allow: "POST" });
   const databaseMissing = requireSupabase(env);
@@ -723,25 +745,32 @@ async function handleChat(request, env, traceId) {
       if (requestId) userRecord.turn_id = requestId;
       await insertMessage(env, userRecord);
     }
+    const isResponsesApi = env.MODEL_API_URL.includes("/responses");
+    const requestBody = isResponsesApi
+      ? { model: env.MODEL_NAME || "gpt-4o-mini", input: messages }
+      : { model: env.MODEL_NAME || "gpt-4o-mini", messages };
     const upstream = await fetchProvider("model", env.MODEL_API_URL, {
       method: "POST",
       headers: {
         "content-type": "application/json",
         authorization: `Bearer ${env.MODEL_API_KEY}`,
       },
-      body: JSON.stringify({
-        model: env.MODEL_NAME || "gpt-4o-mini",
-        messages,
-      }),
+      body: JSON.stringify(requestBody),
     }, timeoutFor(env, "UPSTREAM_TIMEOUT_MS"));
     if (!upstream.ok) throw new ProviderError("model", "upstream_error", upstream.status);
     const payload = await responsePayload(upstream);
-    const answer = payload?.choices?.[0]?.message?.content;
+    const answer = isResponsesApi
+      ? extractResponsesAnswer(payload)
+      : payload?.choices?.[0]?.message?.content;
     if (typeof answer !== "string" || !answer.trim()) {
       return json({ error: "model_invalid_response" }, 502);
     }
     const boundedAnswer = answer.trim().slice(0, MAX_MEMORY_LENGTH);
-    payload.choices[0].message.content = boundedAnswer;
+    if (isResponsesApi) {
+      setResponsesAnswer(payload, boundedAnswer);
+    } else {
+      payload.choices[0].message.content = boundedAnswer;
+    }
     if (requestId) {
       payload.request_id = requestId;
       payload.cached = false;
