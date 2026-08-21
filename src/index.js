@@ -862,6 +862,29 @@ async function route(request, env, traceId) {
 }
 
 export default {
+  async scheduled(controller, env, ctx) {
+    const keepAlive = [];
+    if (env.FRONTEND_ORIGIN) {
+      keepAlive.push(
+        fetch(env.FRONTEND_ORIGIN, {
+          method: "HEAD",
+          signal: AbortSignal.timeout(10_000),
+        }).then((r) => console.log("keepalive_streamlit", r.status)).catch(() => {})
+      );
+    }
+    if (env.SUPABASE_URL && env.SUPABASE_SERVICE_ROLE_KEY) {
+      keepAlive.push(
+        fetch(`${env.SUPABASE_URL.replace(/\/$/, "")}/rest/v1/agent_messages?select=id&limit=1`, {
+          headers: {
+            apikey: env.SUPABASE_SERVICE_ROLE_KEY,
+            authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+          },
+          signal: AbortSignal.timeout(10_000),
+        }).then((r) => console.log("keepalive_supabase", r.status)).catch(() => {})
+      );
+    }
+    ctx.waitUntil(Promise.allSettled(keepAlive));
+  },
   async fetch(request, env) {
     const requestId = traceRequestId(request);
     let response;
