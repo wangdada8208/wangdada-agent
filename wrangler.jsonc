@@ -1,0 +1,18 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "wangdada-agent-api",
+  "main": "src/index.js",
+  "compatibility_date": "2026-08-17",
+  "r2_buckets": [
+    {
+      "binding": "FILES",
+      "bucket_name": "wangdada-agent-files"
+    }
+  ],
+  "ai": {
+    "binding": "AI"
+  },
+  "triggers": {
+    "crons": ["*/5 * * * *"]
+  }
+}

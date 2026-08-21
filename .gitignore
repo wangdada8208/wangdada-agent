@@ -1,0 +1,7 @@
+.wrangler/
+node_modules/
+.dev.vars
+.env
+supabase/.temp/
+*.pem
+ssh_http_proxy.py
