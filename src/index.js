@@ -1,4 +1,5 @@
 import { handleKnowledgeRequest } from "./knowledge.js";
+import { handleMultiBot } from "./multi-bot.js";
 
 const SERVICE_NAME = "wangdada-agent-api";
 const MAX_JSON_BYTES = 128 * 1024;
@@ -802,7 +803,10 @@ function isPrivatePath(pathname) {
     pathname === "/locks/release" ||
     pathname === "/files" ||
     pathname.startsWith("/files/") ||
-    pathname.startsWith("/knowledge");
+    pathname.startsWith("/knowledge") ||
+    pathname.startsWith("/bots") ||
+    pathname.startsWith("/channels") ||
+    pathname === "/chat/group";
 }
 
 async function route(request, env, traceId) {
@@ -826,7 +830,7 @@ async function route(request, env, traceId) {
     return json({
       name: SERVICE_NAME,
       status: "ok",
-      endpoints: ["GET /health", "POST /chat", "/memory", "/tasks", "/cache", "/locks/*", "/files", "/knowledge"],
+      endpoints: ["GET /health", "POST /chat", "/memory", "/tasks", "/cache", "/locks/*", "/files", "/knowledge", "/bots", "/channels", "/chat/group"],
     });
   }
 
@@ -856,6 +860,9 @@ async function route(request, env, traceId) {
   }
   if (url.pathname === "/knowledge" || url.pathname.startsWith("/knowledge/")) {
     return handleKnowledgeRequest(request, env, url);
+  }
+  if (url.pathname.startsWith("/bots") || url.pathname.startsWith("/channels") || url.pathname === "/chat/group") {
+    return handleMultiBot(request, env, url);
   }
 
   return json({ error: "not_found" }, 404);

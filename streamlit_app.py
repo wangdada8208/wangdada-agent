@@ -409,6 +409,98 @@ def render_chat() -> None:
         st.markdown(answer)
 
 
+
+def render_group_chat():
+    st.subheader("👥 群聊")
+    api_base = st.session_state.get("api_base", "")
+    token = st.session_state.get("api_token", "")
+
+    headers = {"Authorization": f"Bearer {token}"} if token else {}
+
+    # Fetch channels and bots
+    try:
+        channels_resp = requests.get(f"{api_base}/channels", headers=headers, timeout=15)
+        bots_resp = requests.get(f"{api_base}/bots", headers=headers, timeout=15)
+        channels = channels_resp.json() if channels_resp.ok else []
+        all_bots = bots_resp.json() if bots_resp.ok else []
+    except Exception:
+        st.error("无法连接 API")
+        return
+
+    if not channels:
+        st.info("还没有频道，请在侧边栏创建一个")
+        return
+
+    channel_names = [c["name"] for c in channels]
+    selected_channel_name = st.selectbox("选择频道", channel_names)
+    selected_channel = next((c for c in channels if c["name"] == selected_channel_name), None)
+    if not selected_channel:
+        return
+
+    channel_id = selected_channel["id"]
+    ch_bots = selected_channel.get("bots", [])
+
+    # Show bot avatars
+    bot_cols = st.columns(len(ch_bots)) if ch_bots else [st]
+    for i, bot in enumerate(ch_bots):
+        with bot_cols[i]:
+            color = bot.get("color", "#4F46E5")
+            emoji = bot.get("avatar_emoji", "🤖")
+            st.markdown(
+                f'<div style="text-align:center;padding:8px;border-radius:12px;background:{color}15;">'
+                f'<span style="font-size:24px">{emoji}</span><br>'
+                f'<span style="font-size:12px;color:{color};font-weight:bold">{bot["name"]}</span></div>',
+                unsafe_allow_html=True,
+            )
+
+    st.divider()
+
+    # Load messages
+    try:
+        msg_resp = requests.get(
+            f"{api_base}/chat/group",
+            params={"channel_id": channel_id},
+            headers=headers,
+            timeout=15,
+        )
+        messages = msg_resp.json() if msg_resp.ok else []
+    except Exception:
+        messages = []
+
+    # Display messages
+    for msg in messages:
+        if msg["role"] == "user":
+            with st.chat_message("user"):
+                st.markdown(msg["content"])
+        elif msg.get("bot_name"):
+            emoji = msg.get("avatar_emoji", "🤖")
+            name = msg["bot_name"]
+            color = msg.get("bot_color", "#4F46E5")
+            with st.chat_message(name, avatar=emoji):
+                st.markdown(f"**<span style='color:{color}'>{name}</span>**", unsafe_allow_html=True)
+                st.markdown(msg["content"])
+        else:
+            with st.chat_message("assistant"):
+                st.markdown(msg["content"])
+
+    # Chat input
+    prompt = st.chat_input(f"在 {selected_channel_name} 中发消息…")
+    if prompt:
+        try:
+            resp = requests.post(
+                f"{api_base}/chat/group",
+                headers={**headers, "Content-Type": "application/json"},
+                json={"channel_id": channel_id, "message": prompt},
+                timeout=120,
+            )
+            if resp.ok:
+                st.rerun()
+            else:
+                st.error(f"发送失败: {resp.status_code}")
+        except Exception as e:
+            st.error(f"错误: {e}")
+
+
 def load_files(cursor: Optional[str] = None) -> None:
     result = api_request(
         st.session_state.api_base,
